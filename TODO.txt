@@ -1,11 +1,54 @@
 General :
     Headers & explanations
+    define macros useful
 
 
 int   mm_init(void)
     Find how to allocate heap
     Define and create structure for free blocks
+Content:
+if heap not initialized
+    init heap
+write header to first word (next=prev=null, size is known already)
+write footer to last word
+initialize freeblocks structure
 
+
+Free block:
+    Header : size, next, prev
+    Bit of allocation ? (Else pb if we try to coalesce, we have to check if the block is free but maybe the first fields -those which would be
+    the prev and next fields in a free block - are pointers)
+    Footer : size
+Allocated block:
+    Header : size
+    Footer : size
+
+Add a free block (with sort) :
+    while current_i < free_block, current=*(current.next)
+
+    current.prev.next=free_block
+    free_block.prev=current.prev
+    current.prev=free_block
+    free_block.next=current
+
+free a block :
+    coalesce high ? update the size of the high and the footer accordingly
+    (non exclusive)
+    coalesce low ? update the size of the high and the footer accordingly, change the address in prev.next
+
+allocate a block:
+    go through the free block list, check sizes
+    we need data_size + size_header + size_footer, or data_size + size_header + size_footer + size_header, so we can declare the remaining as a free block
+    Maybe we can declare a block without a footer : if the header is next;prev;size and the footer is just size, having size=-1 means we can optimize the footer ?
+    if not, the min size to split is data_size + 2*(size_header + size_footer)
+
+    if found one with correct size :
+        current.prev.next=current.next
+        current.next.prev=current.prev
+    if non-exact size:
+        *(footer+1)=header for remaining space
+        *(footer+size_header+1) = footer for remaining space
+        free(*(footer+1)) (add the remaining small block in the free blocks)
 
 
 void *mm_malloc(size_t size)
