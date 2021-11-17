@@ -43,6 +43,8 @@ team_t team = {
 
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
+#define READ(p)  (*(unsigned int*)(p)) 
+#define WRITE(p,x)  (*(unsigned int*)(p)=(x))
 
 /* 
  * mm_init - initialize the malloc package.
