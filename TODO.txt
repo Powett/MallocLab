@@ -1,17 +1,25 @@
+General :
+    Headers & explanations
+
+
 int   mm_init(void)
+    Find how to allocate heap
+    Define and create structure for free blocks
+
 
 
 void *mm_malloc(size_t size)
-
+    Define how to find the free block to use
+    Mark it as used ?
 
 void  mm_free(void *ptr)
+    Add the block to the free structure
 
 
 void *mm_realloc(void *ptr, size_t size)
-
+    malloc, copy, free
 
 int mm_check(void)
-    Check for consistency
+    Check for consistency : what criteria ?
     Return nonzero iff heap consistent
     NOT TO BE CALLED IN THE SUBMISSION, BUT STYLE POINTS 
-    
