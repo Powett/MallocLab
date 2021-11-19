@@ -70,7 +70,7 @@ team_t team = {
 
 /* Header shape :  */
 /* Footer shape : [(unsigned int) size] */
-#define HEADER_SIZE WORD_SIZE+2*POINTER_SIZE
+#define HEADER_SIZE WORD_SIZE+2*POINTER_SIZE // WARNING : This size corresponds to a FREE BLOCK (the 2 pointers are erased in an allocated block)
 #define FOOTER_SIZE WORD_SIZE
 
 #define HDR(block)  ( (char*) block - HEADER_SIZE)  //Returns address of the header of a given block
@@ -86,6 +86,15 @@ static char* heap;  // Pointer to heap
  */
 int mm_init(void)
 {
+    if ((heap = mem_sbrk(HEADER_SIZE+FOOTER_SIZE) == (void *)-1) // We use the fact that here, header + footer size is multiple of aligment(no padding needed)
+        return -1;
+    WRITE(heap,PACK(0,0)); // Size and is_allocated
+    WRITE(heap+WORD_SIZE,-1); // No prev
+    WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
+    WRITE(heap+WORD_SIZE+2*POINTER_SIZE,PACK(0,0)); // Size and is_allocated
+    
+    //call extend_heap function
+    
     return 0;
 }
 
