@@ -38,13 +38,48 @@ team_t team = {
 /* single word (4) or double word (8) alignment */
 #define ALIGNMENT 8
 
+#define WORD_SIZE 4
+#define POINTER_SIZE 4
+
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
-
 
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 #define READ(p)  (*(unsigned int*)(p)) 
 #define WRITE(p,x)  (*(unsigned int*)(p)=(x))
+
+/*
+ * Layout of a free block, size N=k*ALIGNMENT 
+ *  
+ *  [HEADER][ char[N-2] ][FOOTER]
+ * Where :
+ *  [HEADER] = [ PACK( (unsigned int)N , (bit) allocated) ) ] [ (unsigned int*) prev ] [ (unsigned int*) next]
+ *  [FOOTER] = [ PACK( (unsigned int)N , (bit) allocated) ) ]
+ * 
+ * As prev and next are only used for a free block, we can write over them once the block is allocated
+ * 
+ * Layout of an allocated block, size N=k*ALIGNMENT
+ *  [ PACK( (unsigned int)N , (bit) allocated) ) ][ char[N] ][ PACK( (unsigned int)N , (bit) allocated) ) ]
+ * 
+ * In the following code, the convention is :
+ *  - 'block' : pointer to block data : points just after the size&allocated bit 
+ * So if the block is allocated this points to the first data word, else it points to the 'prev' pointer.
+ * 
+ *  - 'p' : pointer to the block structure : points to the header
+ */
+
+/* Header shape :  */
+/* Footer shape : [(unsigned int) size] */
+#define HEADER_SIZE WORD_SIZE+2*POINTER_SIZE
+#define FOOTER_SIZE WORD_SIZE
+
+#define HDR(block)  ( (char*) block - HEADER_SIZE)  //Returns address of the header of a given block
+#define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
+#define GET_SIZE(block) ( GET(HDR(block)) & ~0x7)
+#define GET_ALLOCATED(block) ( GET(HDR(block)) & 0x1)
+#define FTR(block)  ( (char*) block + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
+
+static char* heap;  // Pointer to heap 
 
 /* 
  * mm_init - initialize the malloc package.
