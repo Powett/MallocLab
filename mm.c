@@ -49,7 +49,7 @@ team_t team = {
 #define WRITE(p,x)  (*(unsigned int*)(p)=(x))
 
 /*
- * Layout of a free block, size N=k*ALIGNMENT 
+ * Layout of a free block, size N=k*ALIGNMENT (size is given for an allocated block)
  *  
  *  [HEADER][ char[N-2] ][FOOTER]
  * Where :
