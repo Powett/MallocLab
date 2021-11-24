@@ -3,6 +3,8 @@ General :
     define macros useful
 
 
+
+/////////////////////OK
 int   mm_init(void)
     Find how to allocate heap
     Define and create structure for free blocks
@@ -12,7 +14,7 @@ if heap not initialized
 write header to first word (next=prev=null, size is known already)
 write footer to last word
 initialize freeblocks structure
-
+/////////////////////OK
 
 Free block:
     Header : size, next, prev
@@ -23,6 +25,7 @@ Allocated block:
     Header : size
     Footer : size
 
+/***
 Add a free block (with sort) :
     while current_i < free_block, current=*(current.next)
 
@@ -30,11 +33,23 @@ Add a free block (with sort) :
     free_block.prev=current.prev
     current.prev=free_block
     free_block.next=current
+***/
 
 free a block :
+    free locally
+    add to free structure
+    check coalesce_before
+    check coalesce_after
     coalesce high ? update the size of the high and the footer accordingly
     (non exclusive)
     coalesce low ? update the size of the high and the footer accordingly, change the address in prev.next
+
+
+coalesce :
+    before : pop out of list (except last)
+    after : pop out of list
+    store in the last found in 'before' step
+
 
 allocate a block:
     go through the free block list, check sizes
@@ -64,5 +79,26 @@ void *mm_realloc(void *ptr, size_t size)
 
 int mm_check(void)
     Check for consistency : what criteria ?
+    
+    No free blocks side by side
+    
     Return nonzero iff heap consistent
+
     NOT TO BE CALLED IN THE SUBMISSION, BUT STYLE POINTS 
+
+
+
+Nathan :
+- free
+- coalesce
+- mm_check ?
+
+Vib:
+- find_fit
+- extend_heap
+- place
+
+
+
+Together :
+- realloc

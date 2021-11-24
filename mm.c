@@ -53,9 +53,10 @@ team_t team = {
 /*
  * Layout of a free block, size N=k*ALIGNMENT (size is given for an allocated block)
  *  
- *  [HEADER][ char[N-2] ][FOOTER]
+ *  [HEADER'][ char[N-2] ][FOOTER]
  * Where :
- *  [HEADER] = [ PACK( (unsigned int)N , (bit) allocated) ) ] [ (unsigned int*) prev ] [ (unsigned int*) next]
+ *  [HEADER'] = [ PACK( (unsigned int)N , (bit) allocated) ) ] [ (unsigned int*) next ] [ (unsigned int*) prev]
+ *            = [HEADER]                                       [ (unsigned int*) next ] [ (unsigned int*) prev]
  *  [FOOTER] = [ PACK( (unsigned int)N , (bit) allocated) ) ]
  * 
  * As prev and next are only used for a free block, we can write over them once the block is allocated
@@ -77,32 +78,27 @@ team_t team = {
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 
-#define HDR(block)  ( (char*) block - HEADER_SIZE)  //Returns address of the header of a given block
+#define HDR(block)  ( (void*) block - HEADER_SIZE)  //Returns address of the header of a given block
 #define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
 #define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
 #define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
-#define FTR(block)  ( (char*) block + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
+#define FTR(block)  ( (void*) (block) + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
 
-#define NEXT_BLOCK(block) ((void *)(block) + GET_SIZE(HDR(block)))
-#define PREV_BLKP(bp) ((void *)(block) - GET_SIZE(HDR(block) - WORD_SIZE))
+#define NEXT_BLOCK(block) (FTR(block)+WORD_SIZE)
+#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE(HDR(block) - WORD_SIZE))
 
-
-#define NEXTFREE_FIELD(block) (*(void **) block) // Address of the field of the free-header containing the next free block (points to the beginning of block = next.next)
-#define PREVFREE_FIELD(block) (*(void **) (block+WORD_SIZE)) // Address of the field of the free-header containing the prev free block (points to the beginning of block = prev.next)
+#define NEXTFREE(block) (*(void **) block) // Address of the next free block (beginning of block = next.next)
+#define PREVFREE(block) (*(void **) (block+WORD_SIZE)) // Address of the prev free block (beginning of block = prev.next)
 
 // Private variables represeneting the heap and free list within the heap
 static char *heap = 0;  /* Points to the start of the heap */
-static char *free_listp = 0;  /* Points to the frist free block */
+static char *free_list = 0;  /* Points to the frist free block */
 
 
 static void *extend_heap(size_t words);
+static void place(void *block, size_t asize);
 static void *find_fit(size_t size);
 static void *coalesce(void *block);
-static void *coalesce_up(void *block);
-static void *coalesce_down(void *block);
-static void place(void *block, size_t asize);
-static void remove_freeblock(void *block);
-static int mm_check();
 
 
 /* 
@@ -110,17 +106,17 @@ static int mm_check();
  */
 int mm_init(void)
 {
-    if (heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE) == (void *)-1) // +2 due to prologue and epilogue
+    if (heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE) == (void *)-1) // +2 due to prologue and epilogue header/footer
     {
         return -1;
     }
-    WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Prologue header
+    WRITE(heap,PACK(0,1)); // Prologue header
     heap+=WORD_SIZE;
     WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
     WRITE(heap+WORD_SIZE,-1); // No prev
     WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
     WRITE(FTR(heap+WORD_SIZE),PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
-    WRITE(FTR(heap+WORD_SIZE)+WORD_SIZE,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Epilogue header
+    WRITE(FTR(heap+WORD_SIZE)+WORD_SIZE,PACK(0,1)); // Epilogue header
     free_list=heap;
     return 0;
 }
@@ -144,8 +140,43 @@ void *mm_malloc(size_t size)
 /*
  * mm_free - Freeing a block does nothing.
  */
-void mm_free(void *ptr)
+void mm_free(void *block)
 {
+    if (block == 0) 
+    {
+        return;
+    }
+    size_t block_size = GET_SIZE(HDR(block));
+    if (heap == 0){
+        mm_init();
+    }
+
+    WRITE(HDR(block), PACK(block_size, 0));
+    WRITE(FTR(block), PACK(block_size, 0));
+    coalesce(block);
+}
+
+static void* coalesce(void* block){
+
+    // REDO : ONLY ONE COALESCING UP AND DOWN POSSIBLE
+    size_t new_size=GET_SIZE(block);
+    
+
+    if (!GET_ALLOCATED(NEXT_BLOCK(block))){ // Coalesce after : if a free block is found, we remove it from the free_list and merge 'downwards'
+        new_size+=GET_SIZE(NEXT_BLOCK(block));
+        WRITE(PREVFREE(NEXT_BLOCK(block)), NEXTFREE(NEXT_BLOCK(block)));
+        WRITE(NEXTFREE(NEXT_BLOCK(block))+WORD_SIZE, PREVFREE(NEXT_BLOCK(block)));
+    }
+    
+    if (!(GET_ALLOCATED(PREV_BLOCK(block)))){ // Coalesce before : if a free block is found, we change its size field
+        block=PREV_BLOCK(block);
+        new_size+=GET_SIZE(block);
+    } else { // If not, we have to create a new entry in free_list
+        WRITE(block,free_list);
+        WRITE(free_list+WORD_SIZE,block);
+        WRITE(block+WORD_SIZE, -1);
+    }
+    WRITE(HDR(block), PACK(new_size,0));
 }
 
 /*
