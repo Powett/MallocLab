@@ -80,13 +80,14 @@ team_t team = {
 #define GET_SIZE(block) ( GET(HDR(block)) & ~0x7)
 #define GET_ALLOCATED(block) ( GET(HDR(block)) & 0x1)
 #define FTR(block)  ( (char*) block + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
+#define NEXTFREE(block) GET(HDR(block)+WORD_SIZE)
 
 static char* heap;  // Pointer to heap 
 
 
-void extend_heap(int additional_space);
-void coalesce_high(char* p);
-void coalesce_low(char* p);
+void extend_heap(int additional_space); // to implement
+void coalesce_high(char* p); // to implement
+void coalesce_low(char* p); // to implement
 
 
 /* 
@@ -98,7 +99,7 @@ int mm_init(void)
     {
         return -1;
     }
-    WRITE(heap,PACK(0,0)); // Size and is_allocated
+    WRITE(heap,PACK(2,0)); // Size and is_allocated
     WRITE(heap+WORD_SIZE,-1); // No prev
     WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
     WRITE(heap+WORD_SIZE+2*POINTER_SIZE,PACK(0,0)); // Size and is_allocated
