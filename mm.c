@@ -75,19 +75,34 @@ team_t team = {
 #define HEADER_SIZE WORD_SIZE+2*POINTER_SIZE // WARNING : This size corresponds to a FREE BLOCK (the 2 pointers are erased in an allocated block)
 #define FOOTER_SIZE WORD_SIZE
 
+#define MAX(x, y) ((x) > (y)? (x) : (y))
+
 #define HDR(block)  ( (char*) block - HEADER_SIZE)  //Returns address of the header of a given block
 #define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
-#define GET_SIZE(block) ( GET(HDR(block)) & ~0x7)
-#define GET_ALLOCATED(block) ( GET(HDR(block)) & 0x1)
+#define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
+#define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
 #define FTR(block)  ( (char*) block + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
-#define NEXTFREE(block) GET(HDR(block)+WORD_SIZE)
 
-static char* heap;  // Pointer to heap 
+#define NEXT_BLOCK(block) ((void *)(block) + GET_SIZE(HDR(block)))
+#define PREV_BLKP(bp) ((void *)(block) - GET_SIZE(HDR(block) - WORD_SIZE))
 
 
-void extend_heap(int additional_space); // to implement
-void coalesce_high(char* p); // to implement
-void coalesce_low(char* p); // to implement
+#define NEXTFREE_FIELD(block) (*(void **) block) // Address of the field of the free-header containing the next free block (points to the beginning of block = next.next)
+#define PREVFREE_FIELD(block) (*(void **) (block+WORD_SIZE)) // Address of the field of the free-header containing the prev free block (points to the beginning of block = prev.next)
+
+// Private variables represeneting the heap and free list within the heap
+static char *heap = 0;  /* Points to the start of the heap */
+static char *free_listp = 0;  /* Points to the frist free block */
+
+
+static void *extend_heap(size_t words);
+static void *find_fit(size_t size);
+static void *coalesce(void *block);
+static void *coalesce_up(void *block);
+static void *coalesce_down(void *block);
+static void place(void *block, size_t asize);
+static void remove_freeblock(void *block);
+static int mm_check();
 
 
 /* 
@@ -95,17 +110,18 @@ void coalesce_low(char* p); // to implement
  */
 int mm_init(void)
 {
-    if (heap = mem_sbrk(HEADER_SIZE+FOOTER_SIZE) == (void *)-1) // We use the fact that here, header + footer size is multiple of aligment(no padding needed)
+    if (heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE) == (void *)-1) // +2 due to prologue and epilogue
     {
         return -1;
     }
-    WRITE(heap,PACK(2,0)); // Size and is_allocated
+    WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Prologue header
+    heap+=WORD_SIZE;
+    WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
     WRITE(heap+WORD_SIZE,-1); // No prev
     WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
-    WRITE(heap+WORD_SIZE+2*POINTER_SIZE,PACK(0,0)); // Size and is_allocated
-    
-    extend_heap(CHUNK_SIZE);
-    
+    WRITE(FTR(heap+WORD_SIZE),PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
+    WRITE(FTR(heap+WORD_SIZE)+WORD_SIZE,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Epilogue header
+    free_list=heap;
     return 0;
 }
 
