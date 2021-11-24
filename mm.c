@@ -41,6 +41,8 @@ team_t team = {
 #define WORD_SIZE 4
 #define POINTER_SIZE 4
 
+#define CHUNK_SIZE 200*ALIGNMENT
+
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
@@ -81,19 +83,27 @@ team_t team = {
 
 static char* heap;  // Pointer to heap 
 
+
+void extend_heap(int additional_space);
+void coalesce_high(char* p);
+void coalesce_low(char* p);
+
+
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-    if ((heap = mem_sbrk(HEADER_SIZE+FOOTER_SIZE) == (void *)-1) // We use the fact that here, header + footer size is multiple of aligment(no padding needed)
+    if (heap = mem_sbrk(HEADER_SIZE+FOOTER_SIZE) == (void *)-1) // We use the fact that here, header + footer size is multiple of aligment(no padding needed)
+    {
         return -1;
+    }
     WRITE(heap,PACK(0,0)); // Size and is_allocated
     WRITE(heap+WORD_SIZE,-1); // No prev
     WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
     WRITE(heap+WORD_SIZE+2*POINTER_SIZE,PACK(0,0)); // Size and is_allocated
     
-    //call extend_heap function
+    extend_heap(CHUNK_SIZE);
     
     return 0;
 }
