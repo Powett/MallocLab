@@ -99,6 +99,9 @@ static void *extend_heap(size_t words);
 static void place(void *block, size_t asize);
 static void *find_fit(size_t size);
 static void *coalesce(void *block);
+static int checkBlock(void * block);
+static void displayBlock(void* block);
+static int checkHeap();
 
 
 /* 
@@ -106,18 +109,20 @@ static void *coalesce(void *block);
  */
 int mm_init(void)
 {
-    if (heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE) == (void *)-1) // +2 due to prologue and epilogue header/footer
+    if ((heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE)) == (void *)-1) // +2 due to prologue and epilogue header/footer
     {
         return -1;
     }
     WRITE(heap,PACK(0,1)); // Prologue header
     heap+=WORD_SIZE;
     WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
+    heap+=WORD_SIZE;
     WRITE(heap+WORD_SIZE,-1); // No prev
     WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
     WRITE(FTR(heap+WORD_SIZE),PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
     WRITE(FTR(heap+WORD_SIZE)+WORD_SIZE,PACK(0,1)); // Epilogue header
     free_list=heap;
+    displayBlock(heap);
     return 0;
 }
 
@@ -164,8 +169,15 @@ static void* coalesce(void* block){
 
     if (!GET_ALLOCATED(NEXT_BLOCK(block))){ // Coalesce after : if a free block is found, we remove it from the free_list and merge 'downwards'
         new_size+=GET_SIZE(NEXT_BLOCK(block));
-        WRITE(PREVFREE(NEXT_BLOCK(block)), NEXTFREE(NEXT_BLOCK(block)));
-        WRITE(NEXTFREE(NEXT_BLOCK(block))+WORD_SIZE, PREVFREE(NEXT_BLOCK(block)));
+        if (NEXT_BLOCK(block) != (void*)-1)
+        {
+            WRITE(NEXTFREE(NEXT_BLOCK(block))+WORD_SIZE, NEXT_BLOCK(block)+WORD_SIZE);
+        }
+        if (NEXT_BLOCK(block)+WORD_SIZE != (void*)-1){
+            WRITE(PREVFREE(NEXT_BLOCK(block)), NEXT_BLOCK(block));
+        }
+        
+        
     }
     
     if (!(GET_ALLOCATED(PREV_BLOCK(block)))){ // Coalesce before : if a free block is found, we change its size field
@@ -199,20 +211,39 @@ void *mm_realloc(void *ptr, size_t size)
     return newptr;
 }
 
-int mm_check(){
-    
+static void displayBlock(void* block){
+    size_t block_size=GET_SIZE(HDR(block));
+    int i;
+    printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(HDR(block)) ? "Allocated" : "Free"));
+    for (i=0;i<block_size;i++){
+        printf("[ %x ]", *(unsigned int *)(block+i));
+    }
+    printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(FTR(block)) ? "Allocated" : "Free"));
 }
 
+static int checkBlock(void * block){
+    // Check header & footer
+    if (HDR(block)!=FTR(block)){
+        printf("Header and footer are not identical.\n");
+        return -1;
+    }
+    if (GET_SIZE(block)%8!=0){
+        // We use the fact that header+footer is two words, so 8 bytes, hence keeps alignment
+        printf("Size of block is not multiple of alignment.\n");
+        return -1;
+    }
+    // Other tests
+    return 1;
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
+static int checkHeap(){
+    int heap_ok=1;
+    void* block;
+    printf("Heap address : %p\n", block);
+    while (GET_SIZE(HDR(block)) > 0){
+        printblock(block);
+        heap_ok = heap_ok && (checkblock(block)==1);
+        block = NEXT_BLOCK(block);
+    }
+    return heap_ok;
+}
