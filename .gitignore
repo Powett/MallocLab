@@ -1,3 +1,6 @@
+# Temp files
+.nfs*
+
 # Prerequisites
 *.d
 
@@ -52,4 +55,3 @@ Mkfile.old
 dkms.conf
 mdriver
 test
-.nfs00000000180b761f0000003f

@@ -40,7 +40,7 @@ team_t team = {
 
 #define WORD_SIZE 4
 
-#define CHUNK_SIZE ALIGNMENT // min size is ALIGNMENT=2*WORD_SIZE (we have to keep some space for next & prev pointers)
+#define CHUNK_SIZE 20*ALIGNMENT // min size is ALIGNMENT=2*WORD_SIZE (we have to keep some space for next & prev pointers)
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
@@ -213,7 +213,7 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 static void displayBlock(void* block){
-    size_t block_size= ((mem_heap_lo()==block || mem_heap_hi()+1==block )? 0 :GET_SIZE(block));
+    size_t block_size= ((mem_heap_lo()==block || mem_heap_hi()+1-WORD_SIZE==block )? 0 :GET_SIZE(block));
     int i;
     if (block_size)
         printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(block) ? "Allocated" : "Free"));
@@ -238,10 +238,10 @@ static void displayHeap(int verbose){
         displayBlock(cursor);
         cursor=NEXT_BLOCK(cursor);
         i++;
-    }while(cursor<mem_heap_hi() && !(GET_ALLOCATED(cursor)==1 && GET_SIZE(cursor)==0));
-    //cursor=NEXT_BLOCK(cursor);
+    }while(cursor<mem_heap_hi());
     if (verbose)
         printf(    "--------------------- Epilogue ---------------------\n");
+    cursor-=WORD_SIZE;
     displayBlock(cursor);
     if (verbose)
         printf(    "----------------------------------------------------\n");

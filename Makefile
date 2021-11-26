@@ -10,6 +10,8 @@ CFLAGS = -Wall -O2 -m32 -g
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 
+default: mdriver test
+
 mdriver: $(OBJS)
 	$(CC) $(CFLAGS) -o mdriver $(OBJS)
 
