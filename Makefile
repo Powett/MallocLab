@@ -13,7 +13,11 @@ OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 mdriver: $(OBJS)
 	$(CC) $(CFLAGS) -o mdriver $(OBJS)
 
+test: mm.o test.o memlib.o
+	$(CC) $(CFLAGS) -o test mm.o memlib.o test.o
+
 mdriver.o: mdriver.c fsecs.h fcyc.h clock.h memlib.h config.h mm.h
+test.o: test.c fsecs.h fcyc.h clock.h memlib.h config.h mm.h
 memlib.o: memlib.c memlib.h
 mm.o: mm.c mm.h memlib.h
 fsecs.o: fsecs.c fsecs.h config.h
@@ -25,6 +29,6 @@ handin:
 	cp mm.c $(HANDINDIR)/$(TEAM)-$(VERSION)-mm.c
 
 clean:
-	rm -f *~ *.o mdriver
+	rm -f *~ *.o mdriver test
 
 
