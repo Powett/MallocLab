@@ -39,9 +39,8 @@ team_t team = {
 #define ALIGNMENT 8
 
 #define WORD_SIZE 4
-#define POINTER_SIZE 4
 
-#define CHUNK_SIZE 200*ALIGNMENT
+#define CHUNK_SIZE ALIGNMENT // min size is ALIGNMENT=2*WORD_SIZE (we have to keep some space for next & prev pointers)
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
@@ -73,19 +72,21 @@ team_t team = {
 
 /* Header shape :  */
 /* Footer shape : [(unsigned int) size] */
-#define HEADER_SIZE WORD_SIZE+2*POINTER_SIZE // WARNING : This size corresponds to a FREE BLOCK (the 2 pointers are erased in an allocated block)
+#define HEADER_SIZE WORD_SIZE // WARNING : This size corresponds to a ALLOCATED BLOCK
 #define FOOTER_SIZE WORD_SIZE
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 
-#define HDR(block)  ( (void*) block - HEADER_SIZE)  //Returns address of the header of a given block
+#define HDR(block)  ( (char*) block - WORD_SIZE)  //Returns address of the header of a given block
 #define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
 #define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
 #define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
-#define FTR(block)  ( (void*) (block) + GET_SIZE(HDR(block)))  //Returns address of the footer of a given block
+#define GET_SIZE_HERE(p) ( READ(p) & ~0x7)
+#define GET_ALLOCATED_HERE(p) ( READ(p) & 0x1)
+#define FTR(block)  ( (char*) (block) + GET_SIZE(block))  //Returns address of the footer of a given block
 
-#define NEXT_BLOCK(block) (FTR(block)+WORD_SIZE)
-#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE(HDR(block) - WORD_SIZE))
+#define NEXT_BLOCK(block) (FTR(block)+2*WORD_SIZE)
+#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE_HERE(block - 2*WORD_SIZE))
 
 #define NEXTFREE(block) (*(void **) block) // Address of the next free block (beginning of block = next.next)
 #define PREVFREE(block) (*(void **) (block+WORD_SIZE)) // Address of the prev free block (beginning of block = prev.next)
@@ -101,6 +102,7 @@ static void *find_fit(size_t size);
 static void *coalesce(void *block);
 static int checkBlock(void * block);
 static void displayBlock(void* block);
+static void displayHeap(int verbose);
 static int checkHeap();
 
 
@@ -109,20 +111,19 @@ static int checkHeap();
  */
 int mm_init(void)
 {
-    if ((heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE/WORD_SIZE)) == (void *)-1) // +2 due to prologue and epilogue header/footer
+    if ((heap = mem_sbrk(2*WORD_SIZE + HEADER_SIZE+FOOTER_SIZE+CHUNK_SIZE)) == (void *)-1) // +2 due to prologue and epilogue header/footer
     {
         return -1;
     }
-    WRITE(heap,PACK(0,1)); // Prologue header
-    heap+=WORD_SIZE;
-    WRITE(heap,PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
-    heap+=WORD_SIZE;
-    WRITE(heap+WORD_SIZE,-1); // No prev
-    WRITE(heap+WORD_SIZE+POINTER_SIZE,-1); // No next
-    WRITE(FTR(heap+WORD_SIZE),PACK(CHUNK_SIZE/WORD_SIZE,0)); // Size and is_allocated
-    WRITE(FTR(heap+WORD_SIZE)+WORD_SIZE,PACK(0,1)); // Epilogue header
+    WRITE(heap + (0*WORD_SIZE), PACK(0,1)); // Prologue header
+    WRITE(heap + (1*WORD_SIZE), PACK(CHUNK_SIZE,0)); // Size and is_allocated
+    WRITE(heap + (2*WORD_SIZE), -1); // No prev
+    WRITE(heap + (3*WORD_SIZE), -1); // No next
+    heap+=2*WORD_SIZE;
+    WRITE(FTR(heap),PACK(CHUNK_SIZE,0)); // Size and is_allocated
+    WRITE(FTR(heap)+WORD_SIZE,PACK(0,1)); // Epilogue header
     free_list=heap;
-    displayBlock(heap);
+    displayHeap(0);
     return 0;
 }
 
@@ -212,13 +213,38 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 static void displayBlock(void* block){
-    size_t block_size=GET_SIZE(HDR(block));
+    size_t block_size= ((mem_heap_lo()==block || mem_heap_hi()+1==block )? 0 :GET_SIZE(block));
     int i;
-    printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(HDR(block)) ? "Allocated" : "Free"));
+    if (block_size)
+        printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(block) ? "Allocated" : "Free"));
     for (i=0;i<block_size;i++){
-        printf("[ %x ]", *(unsigned int *)(block+i));
+        printf("[ %x ]", *((unsigned char*)block+i));
     }
-    printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(FTR(block)) ? "Allocated" : "Free"));
+    printf("[[ %d | %s ]]\n", GET_SIZE_HERE(block+block_size), (GET_ALLOCATED_HERE(block+block_size) ? "Allocated" : "Free"));
+}
+
+static void displayHeap(int verbose){
+    void* cursor=mem_heap_lo();
+    int i=0;
+    if (verbose)
+        printf(    "--------------------- Prologue ---------------------\n");
+    displayBlock(cursor);
+    cursor+=2*WORD_SIZE;
+    do{
+        if (verbose)
+            printf("--------------------- Block %d ---------------------\n", i);
+        if (verbose)
+            printf("Block address : %p, Header address : %p, Footer address : %p\n", cursor, HDR(cursor), FTR(cursor));
+        displayBlock(cursor);
+        cursor=NEXT_BLOCK(cursor);
+        i++;
+    }while(cursor<mem_heap_hi() && !(GET_ALLOCATED(cursor)==1 && GET_SIZE(cursor)==0));
+    //cursor=NEXT_BLOCK(cursor);
+    if (verbose)
+        printf(    "--------------------- Epilogue ---------------------\n");
+    displayBlock(cursor);
+    if (verbose)
+        printf(    "----------------------------------------------------\n");
 }
 
 static int checkBlock(void * block){
