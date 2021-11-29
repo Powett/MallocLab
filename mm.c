@@ -63,7 +63,7 @@ team_t team = {
 #define FTR(block)  ( IS_BOUND(block) ? block : ((char*) (block) + GET_SIZE(block)))  //Returns address of the footer of a given block
 
 #define NEXT_BLOCK(block) (FTR(block)+2*WORD_SIZE)
-#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE_HERE(block - 2*WORD_SIZE))
+#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE_HERE(block - 2*WORD_SIZE)-2*WORD_SIZE)
 
 #define NEXTFREE(block) (*(void **) block) // Address of the next free block (beginning of block = next.next)
 #define PREVFREE(block) (*(void **) (block+WORD_SIZE)) // Address of the prev free block (beginning of block = prev.next)
@@ -439,7 +439,7 @@ static void place(void *block, size_t asize){
     // DEBUG Purpose, fill in the new block
     unsigned char* cursor= (unsigned char*) block;
     while (i<asize){
-        *cursor="x";
+        *cursor='1';
         cursor++;
         i++;
     }
