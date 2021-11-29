@@ -226,7 +226,7 @@ void *mm_malloc(size_t size)
                     cursor++;
                     i++;
                 }
-                
+
 				return ptr;
 			}
 		else{
@@ -264,19 +264,31 @@ static void* coalesce(void* block){
         }
         block=PREV_BLOCK(block);
         new_size+=GET_SIZE(block)+2*WORD_SIZE;
-    }else if (!GET_ALLOCATED(NEXT_BLOCK(block))){ // If the block before is not free but the one after is
-        new_size+=GET_SIZE(NEXT_BLOCK(block)) + 2*WORD_SIZE;
-        if (NEXTFREE(NEXT_BLOCK(block)) != (void*)-1)
-        {
-            WRITE(NEXTFREE(NEXT_BLOCK(block))+WORD_SIZE, block);
+    }else{
+        if (!GET_ALLOCATED(NEXT_BLOCK(block))){ // If the block before is not free but the one after is
+            new_size+=GET_SIZE(NEXT_BLOCK(block)) + 2*WORD_SIZE;
+            if (NEXTFREE(NEXT_BLOCK(block)) != (void*)-1)
+            {
+                WRITE(NEXTFREE(NEXT_BLOCK(block))+WORD_SIZE, block);
+            }
+            if (PREVFREE(NEXT_BLOCK(block)) != (void*)-1){
+                WRITE(PREVFREE(NEXT_BLOCK(block)), block);
+            }
+            WRITE(block, NEXTFREE(NEXT_BLOCK(block)));
+            WRITE(block+WORD_SIZE, PREVFREE(NEXT_BLOCK(block)));
+            if (free_list==NEXT_BLOCK(block)){
+                free_list=block;
+                printf("Current free list first block : %p\n", free_list);
+            }
+        } else { // Else we add an entry to the list
+            WRITE(block,free_list);
+            WRITE(block+WORD_SIZE, -1);
+            free_list=block;
+            if (NEXTFREE(block)!=(void*)-1){
+                WRITE(NEXTFREE(block)+WORD_SIZE, block);
+            }
+            printf("Current free list first block : %p\n", free_list);
         }
-        if (PREVFREE(NEXT_BLOCK(block)) != (void*)-1){
-            WRITE(PREVFREE(NEXT_BLOCK(block)), block);
-        }        
-    } else { // Else we add an entry to the list
-        WRITE(block,*free_list);
-        WRITE(block+WORD_SIZE, -1);
-        free_list=block;
     }
     WRITE(HDR(block), PACK(new_size,0)); //Finally, we write the proper size in the newly created free block
 }
@@ -364,6 +376,7 @@ static int checkFreeList(){
     int max_free_list_size = ((int) mem_heap_hi()- (int) mem_heap_lo())/4*WORD_SIZE;
     ok = ok && ((cursor == (void*) -1) ||(PREVFREE(cursor)==(void*)-1) && (GET_ALLOCATED(cursor)==0));
     printf("--------------------- Checking free list ---------------------\n");
+    printf("Address of first free block : %p\n", free_list);
     while (i<max_free_list_size && cursor!=(void*)-1){
         printf("Address of free block : %p\n", cursor);
         //displayBlock(cursor);
@@ -444,6 +457,7 @@ static void place(void *block, size_t asize){
     		WRITE(PREVFREE(block), NEXT_BLOCK(block));
         }else{
             free_list=NEXT_BLOCK(block);
+            printf("Current free list first block : %p\n", free_list);
         }
         WRITE(NEXT_BLOCK(block), NEXTFREE(block));
         WRITE(NEXT_BLOCK(block)+WORD_SIZE, PREVFREE(block));
@@ -456,7 +470,6 @@ static void place(void *block, size_t asize){
 		printf("In Else\n");
         WRITE(HDR(block), PACK(free_size, 1));
         WRITE(FTR(block), PACK(free_size, 1));
-		remove_free_block(block);
     }
 }
 
@@ -492,21 +505,19 @@ static void remove_free_block(void *block){
 	//printf("Block is %s\n",block);
 	
     // We use here that "block" points to the block.next field, and block.prev is in block+WORD_SIZE
-    if(block) {
-		//printf("Inside if");
-		if (PREVFREE(block)!= (void*)-1){
-			WRITE(PREVFREE(block), NEXTFREE(block));
-            //NEXTFREE(PREVFREE(block)) = NEXTFREE(block);
-		  }
-		else{
-			free_list = NEXTFREE(block);
-		  }
-		if(NEXTFREE(block) != (void*)-1){
-			//PREVFREE(NEXTFREE(block)) = PREVFREE(block);
-            WRITE(NEXTFREE(block)+WORD_SIZE, PREVFREE(block));
-		  }
-	  //printf("Outside if\n");
-	  }
+    //printf("Inside if");
+    if (PREVFREE(block)!= (void*)-1){
+        printf("Previous free block : %p, next free block : %p\n", PREVFREE(block), NEXTFREE(block));
+        WRITE(PREVFREE(block), NEXTFREE(block));
+    }
+    else{
+        free_list = NEXTFREE(block);
+    }
+    if(NEXTFREE(block) != (void*)-1){
+        WRITE(NEXTFREE(block)+WORD_SIZE, PREVFREE(block));
+    }
+    //printf("Outside if\n");
+    
 }
 
 int mm_checkAll(){
