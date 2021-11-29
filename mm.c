@@ -254,7 +254,7 @@ void mm_free(void *block)
     coalesce(block);
 }
 
-static void* coalesce(void* block){
+static void* coalesce(void* block){    
     size_t new_size=GET_SIZE(block);
       
     if (!(GET_ALLOCATED(PREV_BLOCK(block)))){ // Coalesce before : if a free block is found, we change its size field
@@ -291,6 +291,7 @@ static void* coalesce(void* block){
         }
     }
     WRITE(HDR(block), PACK(new_size,0)); //Finally, we write the proper size in the newly created free block
+    WRITE(FTR(block), PACK(new_size,0)); //Finally, we write the proper size in the newly created free block
 }
 
 /*
