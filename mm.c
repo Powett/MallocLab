@@ -197,6 +197,16 @@ void *mm_malloc(size_t size)
 	
     if(ptr!=NULL){
 		place(ptr,new_block_size);
+        
+        // DEBUG Purpose, fill in the new block
+        int i=0;
+        unsigned char* cursor= (unsigned char*) ptr;
+        while (i<new_block_size){
+            *cursor=(char) size;
+            cursor++;
+            i++;
+        }
+
 		return ptr;
 		} 
 	else{
@@ -206,6 +216,17 @@ void *mm_malloc(size_t size)
 				printf("Malloc check start\n");
 				place(ptr,new_block_size);
 				printf("Malloc check end\n");
+
+
+                // DEBUG Purpose, fill in the new block
+                int i=0;
+                unsigned char* cursor= (unsigned char*) ptr;
+                while (i<new_block_size){
+                    *cursor=(char) size;
+                    cursor++;
+                    i++;
+                }
+                
 				return ptr;
 			}
 		else{
@@ -253,9 +274,9 @@ static void* coalesce(void* block){
             WRITE(PREVFREE(NEXT_BLOCK(block)), block);
         }        
     } else { // Else we add an entry to the list
-        WRITE(block,free_list);
-        WRITE(free_list+WORD_SIZE,block);
+        WRITE(block,*free_list);
         WRITE(block+WORD_SIZE, -1);
+        free_list=block;
     }
     WRITE(HDR(block), PACK(new_size,0)); //Finally, we write the proper size in the newly created free block
 }
@@ -343,8 +364,8 @@ static int checkFreeList(){
     int max_free_list_size = ((int) mem_heap_hi()- (int) mem_heap_lo())/4*WORD_SIZE;
     ok = ok && ((cursor == (void*) -1) ||(PREVFREE(cursor)==(void*)-1) && (GET_ALLOCATED(cursor)==0));
     printf("--------------------- Checking free list ---------------------\n");
-    printf("Address of first free block : %p\n", free_list);
     while (i<max_free_list_size && cursor!=(void*)-1){
+        printf("Address of free block : %p\n", cursor);
         //displayBlock(cursor);
         if (GET_ALLOCATED(cursor)==0){
             printf("Free block ok\n");
@@ -412,7 +433,6 @@ static void place(void *block, size_t asize){
 	
 	
 	size_t free_size = GET_SIZE(block);   
-	int i=0;// DEBUG PURPOSE
     if ((free_size - asize) >= MINBLOCKSIZE) {
     remove_free_block(block);
 	printf("In If\n");
@@ -437,13 +457,6 @@ static void place(void *block, size_t asize){
         WRITE(HDR(block), PACK(free_size, 1));
         WRITE(FTR(block), PACK(free_size, 1));
 		remove_free_block(block);
-    }
-    // DEBUG Purpose, fill in the new block
-    unsigned char* cursor= (unsigned char*) block;
-    while (i<asize){
-        *cursor='1';
-        cursor++;
-        i++;
     }
 }
 
