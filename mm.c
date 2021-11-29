@@ -40,8 +40,8 @@ team_t team = {
 
 #define WORD_SIZE 4
 #define DSIZE 8
-#define CHUNK_SIZE 20*ALIGNMENT // min size is ALIGNMENT=2*WORD_SIZE (we have to keep some space for next & prev pointers)
-#define MINBLOCKSIZE 16
+#define CHUNK_SIZE 20*ALIGNMENT 
+#define MINBLOCKSIZE 4*WORD_SIZE // min size is HEADER_SIZE + FOOTER_SIZE + 2*WORD_SIZE = 4*WORD_SIZE(we have to keep some space for next & prev pointers)
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
 
@@ -134,8 +134,8 @@ int mm_init(void)
     WRITE(FTR(heap),PACK(CHUNK_SIZE,0)); // Size and is_allocated
     WRITE(FTR(heap)+WORD_SIZE,PACK(0,1)); // Epilogue header
     free_list=heap;
-    displayHeap(1);
-    checkHeap();
+    // displayHeap(1);
+    // checkHeap();
     // checkFreeList();
     return 0;
 }
@@ -191,7 +191,7 @@ void *mm_malloc(size_t size)
 		return NULL;
 		}
 		
-    new_block_size = MAX(ALIGN(size)+DSIZE, MINBLOCKSIZE);
+    new_block_size = MAX(ALIGN(size+2*WORD_SIZE), MINBLOCKSIZE);
     
     ptr=find_fit(new_block_size);
 	
@@ -342,10 +342,10 @@ static int checkFreeList(){
     int ok=1;
     int i=0;
     int max_free_list_size = ((int) mem_heap_hi()- (int) mem_heap_lo())/4*WORD_SIZE;
-    ok = ok && (PREVFREE(cursor)==(void*)-1) && (GET_ALLOCATED(cursor)==0);
+    ok = ok && ((cursor == (void*) -1) ||(PREVFREE(cursor)==(void*)-1) && (GET_ALLOCATED(cursor)==0));
     printf("--------------------- Checking free list ---------------------\n");
     while (i<max_free_list_size && cursor!=(void*)-1){
-        displayBlock(cursor);
+        //displayBlock(cursor);
         if (GET_ALLOCATED(cursor)==0){
             printf("Free block ok\n");
         }else{
@@ -387,7 +387,7 @@ static int checkHeap(){
         block = NEXT_BLOCK(block);
     }
     block-=WORD_SIZE;
-    displayBlock(block);
+    //displayBlock(block);
     heap_ok = heap_ok && (checkBlock(block)==1);
     printf("---------------------- Heap %sOK----------------------\n", heap_ok ? "":"NOT ");
     return heap_ok;
@@ -411,27 +411,37 @@ static void place(void *block, size_t asize){
 	
 	
 	size_t free_size = GET_SIZE(HDR(block));   
-	
-    if ((free_size - asize) >= CHUNK_SIZE) {
+	int i=0;// DEBUG PURPOSE
+    if ((free_size - asize) >= MINBLOCKSIZE) {
 	printf("In If\n");
-	//If the difference between free size and allocated size is larger than chunk, divide it into two blocks and coallesce the remaining
+	//If the difference between free size and allocated size is larger than minimal block size, divide it into two blocks and coallesce the remaining
         WRITE(HDR(block), PACK(asize, 1));
-        WRITE(FTR(block), PACK(asize, 1));
+        WRITE(FTR(block), PACK(asize,1));
 		
-		remove_free_block(block);
-		
+        if (PREVFREE(block)!=(void*)-1){
+    		WRITE(PREVFREE(block), NEXT_BLOCK(block));
+        }else{
+            free_list=NEXT_BLOCK(block);
+        }
+        WRITE(NEXT_BLOCK(block), NEXTFREE(block));
+        WRITE(NEXT_BLOCK(block)+WORD_SIZE, PREVFREE(block));
         block = NEXT_BLOCK(block);
-        WRITE(HDR(block), PACK((free_size-asize), 0));
-        WRITE(FTR(block), PACK((free_size-asize), 0));
-		printf("Place check start\n");
-		coalesce(block);
-		printf("Place check end\n");
+        WRITE(HDR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
+        WRITE(FTR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
+        block=PREV_BLOCK(block);
     }
     else { 
 		printf("In Else\n");
         WRITE(HDR(block), PACK(free_size, 1));
         WRITE(FTR(block), PACK(free_size, 1));
 		remove_free_block(block);
+    }
+    // DEBUG Purpose, fill in the new block
+    unsigned char* cursor= (unsigned char*) block;
+    while (i<asize){
+        *cursor="x";
+        cursor++;
+        i++;
     }
 }
 
@@ -465,17 +475,26 @@ static void *extend_heap(size_t words){
 static void remove_free_block(void *block){
 	printf("Remove Free Block Check Start\n");
 	//printf("Block is %s\n",block);
-	if(block) {
+	
+    // We use here that "block" points to the block.next field, and block.prev is in block+WORD_SIZE
+    if(block) {
 		//printf("Inside if");
-		if (PREVFREE(block)){
-			NEXTFREE(PREVFREE(block)) = NEXTFREE(block);
+		if (PREVFREE(block)!= (void*)-1){
+			WRITE(PREVFREE(block), NEXTFREE(block));
+            //NEXTFREE(PREVFREE(block)) = NEXTFREE(block);
 		  }
 		else{
 			free_list = NEXTFREE(block);
 		  }
-		if(NEXTFREE(block) != NULL){
-			PREVFREE(NEXTFREE(block)) = PREVFREE(block);
+		if(NEXTFREE(block) != (void*)-1){
+			//PREVFREE(NEXTFREE(block)) = PREVFREE(block);
+            WRITE(NEXTFREE(block)+WORD_SIZE, PREVFREE(block));
 		  }
 	  //printf("Outside if\n");
 	  }
+}
+
+int mm_checkAll(){
+    displayHeap(1);
+    return checkFreeList() && checkHeap();
 }

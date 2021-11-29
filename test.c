@@ -25,4 +25,6 @@ int main(char argc, char* argv[]){
     mem_init();
     mem_reset_brk();
     mm_init();
+    mm_malloc(3);
+    mm_checkAll();
 }
