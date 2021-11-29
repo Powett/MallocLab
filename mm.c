@@ -49,6 +49,29 @@ team_t team = {
 #define READ(p)  (*(unsigned int*)(p)) 
 #define WRITE(p,x)  (*(unsigned int*)(p)=(x))
 
+#define HEADER_SIZE WORD_SIZE // WARNING : This size corresponds to a ALLOCATED BLOCK
+#define FOOTER_SIZE WORD_SIZE
+
+#define MAX(x, y) ((x) > (y)? (x) : (y))
+
+#define HDR(block)  ( IS_BOUND(block) ? block : ((char*) block - WORD_SIZE))  //Returns address of the header of a given block
+#define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
+#define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
+#define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
+#define GET_SIZE_HERE(p) ( READ(p) & ~0x7)
+#define GET_ALLOCATED_HERE(p) ( READ(p) & 0x1)
+#define FTR(block)  ( IS_BOUND(block) ? block : ((char*) (block) + GET_SIZE(block)))  //Returns address of the footer of a given block
+
+#define NEXT_BLOCK(block) (FTR(block)+2*WORD_SIZE)
+#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE_HERE(block - 2*WORD_SIZE))
+
+#define NEXTFREE(block) (*(void **) block) // Address of the next free block (beginning of block = next.next)
+#define PREVFREE(block) (*(void **) (block+WORD_SIZE)) // Address of the prev free block (beginning of block = prev.next)
+
+#define IS_PROLOGUE(block) ((void*) block<=mem_heap_lo()+WORD_SIZE)
+#define IS_EPILOGUE(block) (mem_heap_hi()+1-WORD_SIZE<=(void*) block)
+#define IS_BOUND(block) (IS_PROLOGUE(block) || IS_EPILOGUE(block))
+
 /*
  * Layout of a free block, size N=k*ALIGNMENT (size is given for an allocated block)
  *  
@@ -70,29 +93,9 @@ team_t team = {
  *  - 'p' : pointer to the block structure : points to the header
  */
 
-/* Header shape :  */
+/* Header shape : [(unsigned int) size] */
 /* Footer shape : [(unsigned int) size] */
-#define HEADER_SIZE WORD_SIZE // WARNING : This size corresponds to a ALLOCATED BLOCK
-#define FOOTER_SIZE WORD_SIZE
 
-#define MAX(x, y) ((x) > (y)? (x) : (y))
-
-#define HDR(block)  ( (char*) block - WORD_SIZE)  //Returns address of the header of a given block
-#define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
-#define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
-#define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
-#define GET_SIZE_HERE(p) ( READ(p) & ~0x7)
-#define GET_ALLOCATED_HERE(p) ( READ(p) & 0x1)
-#define FTR(block)  ( (char*) (block) + GET_SIZE(block))  //Returns address of the footer of a given block
-
-#define NEXT_BLOCK(block) (FTR(block)+2*WORD_SIZE)
-#define PREV_BLOCK(block) ((void *)(block) - GET_SIZE_HERE(block - 2*WORD_SIZE))
-
-#define NEXTFREE(block) (*(void **) block) // Address of the next free block (beginning of block = next.next)
-#define PREVFREE(block) (*(void **) (block+WORD_SIZE)) // Address of the prev free block (beginning of block = prev.next)
-
-#define GET(p)        (*(size_t *)(p))
-#define GET_SIZE_NOW(p)  (GET(p) & ~0x1)
 
 // Private variables represeneting the heap and free list within the heap
 static char *heap = 0;  /* Points to the start of the heap */
@@ -101,13 +104,17 @@ static char *free_list = 0;  /* Points to the frist free block */
 
 static void *extend_heap(size_t words);
 static void place(void *block, size_t asize);
+static void remove_free_block(void *block);
 static void *find_fit(size_t size);
 static void *coalesce(void *block);
-static int checkBlock(void * block);
+
 static void displayBlock(void* block);
 static void displayHeap(int verbose);
+
+static int checkBlock(void * block);
+static int checkFreeList();
+static int checkFreeInFreeList(void* block);
 static int checkHeap();
-static void remove_free_block(void *block);
 
 
 /* 
@@ -121,13 +128,15 @@ int mm_init(void)
     }
     WRITE(heap + (0*WORD_SIZE), PACK(0,1)); // Prologue header
     WRITE(heap + (1*WORD_SIZE), PACK(CHUNK_SIZE,0)); // Size and is_allocated
-    WRITE(heap + (2*WORD_SIZE), PACK(0,0)); // No prev
-    WRITE(heap + (3*WORD_SIZE), PACK(0,0)); // No next
+    WRITE(heap + (2*WORD_SIZE), -1); // No prev
+    WRITE(heap + (3*WORD_SIZE), -1); // No next
     heap+=2*WORD_SIZE;
     WRITE(FTR(heap),PACK(CHUNK_SIZE,0)); // Size and is_allocated
     WRITE(FTR(heap)+WORD_SIZE,PACK(0,1)); // Epilogue header
     free_list=heap;
     displayHeap(1);
+    checkHeap();
+    // checkFreeList();
     return 0;
 }
 
@@ -225,7 +234,6 @@ void mm_free(void *block)
 }
 
 static void* coalesce(void* block){
-    // REDO : ONLY ONE COALESCING UP AND DOWN POSSIBLE
     size_t new_size=GET_SIZE(block);
     
 
@@ -274,7 +282,7 @@ void *mm_realloc(void *ptr, size_t size)
 }
 
 static void displayBlock(void* block){
-    size_t block_size= ((mem_heap_lo()==block || mem_heap_hi()+1-WORD_SIZE==block )? 0 :GET_SIZE(block));
+    size_t block_size= (IS_BOUND(block)? 0 :GET_SIZE(block));
     int i;
     if (block_size)
         printf("[[ %d | %s ]]", block_size, (GET_ALLOCATED(block) ? "Allocated" : "Free"));
@@ -310,8 +318,9 @@ static void displayHeap(int verbose){
 
 static int checkBlock(void * block){
     // Check header & footer
-    if (HDR(block)!=FTR(block)){
+    if (READ(HDR(block))!=READ(FTR(block))){
         printf("Header and footer are not identical.\n");
+        //printf("%x || %x", READ(HDR(block)), READ(FTR(block)));
         return -1;
     }
     if (GET_SIZE(block)%8!=0){
@@ -319,19 +328,68 @@ static int checkBlock(void * block){
         printf("Size of block is not multiple of alignment.\n");
         return -1;
     }
+    if (!IS_BOUND(block) && !GET_ALLOCATED(block) && !checkFreeInFreeList(block)){
+        printf("Non-allocated block not found in list of free blocks\n");
+        return -1;
+    }
     // Other tests
+    printf("Block ok\n");
     return 1;
+}
+
+static int checkFreeList(){
+    void* cursor=free_list;
+    int ok=1;
+    int i=0;
+    int max_free_list_size = ((int) mem_heap_hi()- (int) mem_heap_lo())/4*WORD_SIZE;
+    ok = ok && (PREVFREE(cursor)==(void*)-1) && (GET_ALLOCATED(cursor)==0);
+    printf("--------------------- Checking free list ---------------------\n");
+    while (i<max_free_list_size && cursor!=(void*)-1){
+        displayBlock(cursor);
+        if (GET_ALLOCATED(cursor)==0){
+            printf("Free block ok\n");
+        }else{
+            printf("Free block is not really free");
+        }
+        ok = ok && (GET_ALLOCATED(cursor)==0);
+        cursor=NEXTFREE(cursor);
+        i++;
+    }
+    if (cursor!=(void*)-1){
+        ok=0;
+        printf("Loop or missing a free list terminator\n");
+    }
+    printf("---------------------- Free list %sOK----------------------\n", ok ? "":"NOT ");
+}
+
+static int checkFreeInFreeList(void* block){
+    void* cursor=free_list;
+    int i=0;
+    int max_free_list_size = ((int) mem_heap_hi()- (int) mem_heap_lo())/4*WORD_SIZE;
+    while (i<max_free_list_size && cursor!=(void*)-1){
+        if (block==cursor){
+            return 1;
+        }
+        cursor=NEXTFREE(cursor);
+        i++;
+    }
+    return 0;
 }
 
 static int checkHeap(){
     int heap_ok=1;
-    void* block;
+    void* block=mem_heap_lo();
+    printf("--------------------- Checking heap ---------------------\n");
     printf("Heap address : %p\n", block);
-    while (GET_SIZE(HDR(block)) > 0){
-        printblock(block);
-        heap_ok = heap_ok && (checkblock(block)==1);
+    while (!IS_EPILOGUE(block)){
+        displayBlock(block);
+        heap_ok = heap_ok && (checkBlock(block)==1);
         block = NEXT_BLOCK(block);
     }
+    block-=WORD_SIZE;
+    displayBlock(block);
+    heap_ok = heap_ok && (checkBlock(block)==1);
+    printf("---------------------- Heap %sOK----------------------\n", heap_ok ? "":"NOT ");
     return heap_ok;
 }
 
