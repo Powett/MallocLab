@@ -25,6 +25,11 @@ int main(char argc, char* argv[]){
     mem_init();
     mem_reset_brk();
     mm_init();
-    mm_malloc(160);
+    void* ptr=mm_malloc(3);
+    mm_malloc(5);
+    mm_malloc(12);
+    printf("%p\n", ptr);
     mm_checkAll();
+    //mm_free(ptr);
+    
 }
