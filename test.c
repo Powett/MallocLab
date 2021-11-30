@@ -25,21 +25,25 @@ int main(char argc, char* argv[]){
     mem_init();
     mem_reset_brk();
     mm_init();
-    //void* ptr=mm_malloc(2);
-    int* ptr2=mm_malloc(2*sizeof(int));
-    ptr2[0]=123;
-    ptr2[1]=321;
+    void* ptr=mm_malloc(200);
+    //int* ptr2=mm_malloc(5*sizeof(int));
+    //ptr2[0]=123;
+    //ptr2[1]=321;
     //mm_checkAll();
-    int* ptr3=mm_realloc(ptr2,500*sizeof(int));
-    printf("%d, %d\n", ptr3[0], ptr3[1]);
+    int* ptr3=mm_realloc(ptr,2*sizeof(int));
+    ptr=mm_realloc(ptr3,100);
+    // printf("%d, %d\n", ptr3[0], ptr3[1]);
     //void* ptr3=mm_malloc(4);
     //void* ptr4=mm_malloc(5);
-    // mm_free(ptr);
+    
+    printf("All ok : %d\n", mm_checkAll());
+    mm_free(ptr);
+    
     // mm_free(ptr3);
     //mm_free(ptr2);
     // mm_free(ptr4);
     
     
     
-    //mm_checkAll();
+    
 }

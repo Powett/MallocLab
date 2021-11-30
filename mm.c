@@ -58,7 +58,7 @@ team_t team = {
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 #define MIN(x, y) ((x) > (y)? (y) : (x))
 
-#define HDR(block)  ( IS_BOUND(block) ? block : ((char*) block - WORD_SIZE))  //Returns address of the header of a given block
+#define HDR(block)  ( ((char*) block - WORD_SIZE))  //Returns address of the header of a given block
 #define PACK(size,is_allocated) (size | is_allocated) // Sizes are a multiple of Alignment (8) : we can use the parity bit to store the is_allocated boolean 
 #define GET_SIZE(block) ( READ(HDR(block)) & ~0x7)
 #define GET_ALLOCATED(block) ( READ(HDR(block)) & 0x1)
@@ -163,8 +163,9 @@ void *mm_malloc(size_t size)
     if(size==0){
 		return NULL;
 		}
-		
-    new_block_size = MAX(ALIGN(size+2*WORD_SIZE), MINBLOCKSIZE);
+	
+    size=ALIGN(size+2*WORD_SIZE);
+    new_block_size = MAX(size, MINBLOCKSIZE);
     
     ptr=find_fit(new_block_size);
 	
@@ -179,14 +180,6 @@ void *mm_malloc(size_t size)
 		ptr=extend_heap(new_block_size/WORD_SIZE);
 		if(ptr!=NULL){
 				place(ptr,new_block_size);
-                // // DEBUG Purpose, fill in the new block
-                // int i=0;
-                // unsigned char* cursor= (unsigned char*) ptr;
-                // while (i<new_block_size){
-                //     *cursor=(char) size;
-                //     cursor++;
-                //     i++;
-                // }
 				return ptr;
         }else{
             return NULL;
@@ -198,12 +191,12 @@ void *mm_malloc(size_t size)
  */
 void mm_free(void *block)
 {
-    if (block == 0) 
+    if (block == (void*)-1) 
     {
         return;
     }
     size_t block_size = GET_SIZE(block);
-    if (heap == 0){
+if (heap == 0){
         mm_init();
     }
     WRITE(HDR(block), PACK(block_size, 0));
@@ -237,14 +230,13 @@ static void* coalesce(void* block){
             }
             if (PREVFREE(NEXT_BLOCK(block)) != (void*)-1){
                 WRITE(PREVFREE(NEXT_BLOCK(block)), block);
-            }
-            WRITE(block, NEXTFREE(NEXT_BLOCK(block)));
-            WRITE(block+WORD_SIZE, PREVFREE(NEXT_BLOCK(block)));
-            if (free_list==NEXT_BLOCK(block)){
+            }else{
                 free_list=block;
                 if (DEBUG)
                     printf("Current free list first block : %p\n", free_list);
             }
+            WRITE(block, NEXTFREE(NEXT_BLOCK(block)));
+            WRITE(block+WORD_SIZE, PREVFREE(NEXT_BLOCK(block)));
         } else { // Else we add an entry to the list
             if (DEBUG)
                 printf("NO COALESCING POSSIBLE\n");
@@ -268,7 +260,6 @@ static void* coalesce(void* block){
 void *mm_realloc(void *ptr, size_t size)
 {
     void* new_ptr;
-    // Freeing the block before copying the data erases the first two data blocks :
     int i=0;
     size_t old_size=GET_SIZE(ptr);
     if (ptr==NULL){
@@ -278,30 +269,31 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    if (ALIGN(size)<=old_size){
+    size_t new_size=ALIGN(size+2*WORD_SIZE);
+    if (new_size<=old_size){
         printf("Skipping\n");
-        if (old_size-size >= MINBLOCKSIZE){
+        if (old_size-new_size >= MINBLOCKSIZE){
             printf("Splitting\n");
             WRITE(HDR(ptr), PACK(size,1));
             WRITE(FTR(ptr), PACK(size,1));
             WRITE(free_list+WORD_SIZE,ptr);
             WRITE(NEXT_BLOCK(ptr), free_list);
             WRITE(NEXT_BLOCK(ptr)+WORD_SIZE, (void*) -1);
-            WRITE(HDR(NEXT_BLOCK(ptr)), PACK(old_size-size-2*WORD_SIZE,0));
-            WRITE(FTR(NEXT_BLOCK(ptr)), PACK(old_size-size-2*WORD_SIZE,0));
+            WRITE(HDR(NEXT_BLOCK(ptr)), PACK(old_size-new_size-2*WORD_SIZE,0));
+            WRITE(FTR(NEXT_BLOCK(ptr)), PACK(old_size-new_size-2*WORD_SIZE,0));
         }
         return ptr;
+    }else{
+        printf("Not skipping\n");
+        new_ptr=mm_malloc(size);
+        size_t cpy_size= MIN(size,old_size);
+        for (i=0;i<cpy_size;i++){
+            *((unsigned char*) new_ptr+i)= *((unsigned char*)ptr+i);
+        }
+        mm_free(ptr);
+        return new_ptr;
     }
-    printf("Not skipping\n");
-    if (DEBUG)
-        printf("Old size : %ld, New size : %ld\n", old_size, size);
-    new_ptr=mm_malloc(size);
-    size_t new_size= MIN(size,old_size);
-    for (i=0;i<new_size;i++){
-        *((unsigned char*) new_ptr+i)= *((unsigned char*)ptr+i);
-    }
-    mm_free(ptr);
-    return new_ptr;
+    return NULL;
 }
 
 
@@ -328,32 +320,30 @@ static void place(void *block, size_t asize){
     if (DEBUG)
         printf("HDR IS: %x\n",HDR(block));
 	
-	size_t free_size = GET_SIZE(block);   
-    remove_free_block(block);
+	size_t free_size = GET_SIZE(block);
+    remove_free_block(block);   
     if ((free_size - asize) >= MINBLOCKSIZE) {
-    if (DEBUG)
-    	printf("In If\n");
-	//If the difference between free size and allocated size is larger than minimal block size, divide it into two blocks and coallesce the remaining
+        if (DEBUG)
+        	printf("In If\n");
+	    //If the difference between free size and allocated size is larger than minimal block size, divide it into two blocks and coallesce the remaining
         WRITE(HDR(block), PACK(asize, 1));
         WRITE(FTR(block), PACK(asize,1));
 		
-        if (PREVFREE(block)!=(void*)-1){
-    		WRITE(PREVFREE(block), NEXT_BLOCK(block));
-        }else{
-            free_list=NEXT_BLOCK(block);
-            if (DEBUG)
-                printf("Current free list first block : %p\n", free_list);
-        }
-        WRITE(NEXT_BLOCK(block), NEXTFREE(block));
-        WRITE(NEXT_BLOCK(block)+WORD_SIZE, PREVFREE(block));
         block = NEXT_BLOCK(block);
         WRITE(HDR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
         WRITE(FTR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
+        WRITE(block, free_list);
+        WRITE(block+WORD_SIZE, (void*)-1);
+        if (free_list!=(void*)-1){
+            WRITE(free_list+WORD_SIZE, block);
+        }else{
+            free_list=block;
+        }
         block=PREV_BLOCK(block);
-    }
-    else { 
+    } else { 
         if (DEBUG)
     		printf("In Else\n");
+        remove_free_block(block);
         WRITE(HDR(block), PACK(free_size, 1));
         WRITE(FTR(block), PACK(free_size, 1));
     }
@@ -371,16 +361,18 @@ static void *extend_heap(size_t words){
     }
 
     if (asize < CHUNK_SIZE)
-    asize = CHUNK_SIZE;
+        asize = CHUNK_SIZE;
 
     // Try to grow heap by given size 
     if ((block = mem_sbrk(asize+2*WORD_SIZE)) == (void *)-1)
-    return NULL;
+        return NULL;
 
     // block points to the first data byte of the new free block to be declared
     WRITE(HDR(block), PACK(asize, 0)); // declare a new free block, add to free_list
     WRITE(block,free_list);
     WRITE(block+WORD_SIZE, (void*)-1);
+    if (free_list!=(void*)-1)
+        WRITE(free_list+WORD_SIZE, block);
     free_list=block;
     WRITE(FTR(block), PACK(asize, 0));
     WRITE(HDR(NEXT_BLOCK(block)), PACK(0, 1)); // epilogue
@@ -401,10 +393,10 @@ static void remove_free_block(void *block){
     }else{
         free_list = NEXTFREE(block);
     }
-    if(NEXTFREE(block) != (void*)-1 && NEXTFREE(block) != NULL){
+    if(NEXTFREE(block) != (void*)-1){
         if (DEBUG)
-            printf("Read value : %p\n",READ(block+WORD_SIZE));
-        WRITE(NEXTFREE(block)+WORD_SIZE, READ(block+WORD_SIZE));
+            printf("Read value : %p\n",PREVFREE(block));
+        WRITE(NEXTFREE(block)+WORD_SIZE, PREVFREE(block));
     }    
 }
 
