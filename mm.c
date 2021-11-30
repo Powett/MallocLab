@@ -190,14 +190,14 @@ void *mm_malloc(size_t size)
 		ptr=extend_heap(new_block_size/WORD_SIZE);
 		if(ptr!=NULL){
 				place(ptr,new_block_size);
-                // DEBUG Purpose, fill in the new block
-        int i=0;
-        unsigned char* cursor= (unsigned char*) ptr;
-        while (i<new_block_size){
-            *cursor=(char) size;
-            cursor++;
-            i++;
-        }
+                // // DEBUG Purpose, fill in the new block
+                // int i=0;
+                // unsigned char* cursor= (unsigned char*) ptr;
+                // while (i<new_block_size){
+                //     *cursor=(char) size;
+                //     cursor++;
+                //     i++;
+                // }
 				return ptr;
         }else{
             return NULL;
@@ -297,7 +297,7 @@ void *mm_realloc(void *ptr, size_t size)
     data1=READ(ptr);
     data2=READ(ptr+WORD_SIZE);
     mm_free(ptr);
-    new_ptr=mm_malloc(new_size);
+    new_ptr=mm_malloc(size);
     WRITE(new_ptr, data1);
     WRITE(new_ptr+WORD_SIZE, data2);
     for (i=2;i<new_size/WORD_SIZE;i++){
@@ -341,7 +341,7 @@ static void place(void *block, size_t asize){
 	if (DEBUG)
         printf("Place Start");
     if (DEBUG)
-        printf("HDR IS: %d\n",HDR(block));
+        printf("HDR IS: %x\n",HDR(block));
 	
 	size_t free_size = GET_SIZE(block);   
     remove_free_block(block);
@@ -416,8 +416,10 @@ static void remove_free_block(void *block){
     }else{
         free_list = NEXTFREE(block);
     }
-    if(NEXTFREE(block) != (void*)-1){
-        WRITE(NEXTFREE(block)+WORD_SIZE, PREVFREE(block));
+    if(NEXTFREE(block) != (void*)-1 && NEXTFREE(block) != NULL){
+        if (DEBUG)
+            printf("Read value : %p\n",READ(block+WORD_SIZE));
+        WRITE(NEXTFREE(block)+WORD_SIZE, READ(block+WORD_SIZE));
     }    
 }
 
