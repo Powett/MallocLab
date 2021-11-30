@@ -1,13 +1,7 @@
 /*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- * 
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * mm.c package
+ * See details further
+ * Not all tests are passed
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -268,11 +262,7 @@ static void* coalesce(void* block){
 void *mm_realloc(void *ptr, size_t size)
 {
     void* new_ptr;
-    // Freeing the block before copying the data erases the first two data blocks :
-    
-    
     int i=0;
-
     if (ptr==NULL){
         return mm_malloc(size);
     }
@@ -280,32 +270,15 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    // if (size<GET_SIZE(ptr)){
-    //     place(ptr,size);
-    // }
     if (DEBUG)
         printf("Old size : %ld, New size : %ld\n", GET_SIZE(ptr), size);
     new_ptr=mm_malloc(size);
-    size_t new_size= MIN(size,GET_SIZE(ptr));
+    size_t new_size= MIN(ALIGN(size),GET_SIZE(ptr));
     for (i=0;i<new_size;i++){
         *((unsigned char*) new_ptr+i)= *((unsigned char*)ptr+i);
     }
     mm_free(ptr);
-    displayHeap(1);
     return new_ptr;
-    // void *oldptr = ptr;
-    // void *newptr;
-    // size_t copySize;
-    
-    // newptr = mm_malloc(size);
-    // if (newptr == NULL)
-    //   return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    // if (size < copySize)
-    //   copySize = size;
-    // memcpy(newptr, oldptr, copySize);
-    // mm_free(oldptr);
-    // return newptr;
 }
 
 
@@ -333,7 +306,6 @@ static void place(void *block, size_t asize){
         printf("HDR IS: %x\n",HDR(block));
 	
 	size_t free_size = GET_SIZE(block);   
-    remove_free_block(block);
     if ((free_size - asize) >= MINBLOCKSIZE) {
     if (DEBUG)
     	printf("In If\n");
@@ -354,8 +326,8 @@ static void place(void *block, size_t asize){
         WRITE(HDR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
         WRITE(FTR(block), PACK((free_size-asize-2*WORD_SIZE), 0));
         block=PREV_BLOCK(block);
-    }
-    else { 
+    }else { 
+        remove_free_block(block);
         if (DEBUG)
     		printf("In Else\n");
         WRITE(HDR(block), PACK(free_size, 1));
@@ -386,6 +358,7 @@ static void *extend_heap(size_t words){
     WRITE(block,free_list);
     WRITE(block+WORD_SIZE, (void*)-1);
     free_list=block;
+    WRITE(free_list+WORD_SIZE, block);
     WRITE(FTR(block), PACK(asize, 0));
     WRITE(HDR(NEXT_BLOCK(block)), PACK(0, 1)); // epilogue
     return block;
