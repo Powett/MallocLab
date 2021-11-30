@@ -26,8 +26,10 @@ int main(char argc, char* argv[]){
     mem_reset_brk();
     mm_init();
     //void* ptr=mm_malloc(2);
-    void* ptr2=mm_malloc(1);
+    void* ptr2=mm_malloc(50);
+	mm_realloc(ptr2,50);
     mm_free(ptr2);
+
     //mm_checkAll();
     //void* ptr3=mm_realloc(ptr2,500);
     //void* ptr3=mm_malloc(4);
@@ -39,5 +41,5 @@ int main(char argc, char* argv[]){
     
     
     
-    //mm_checkAll();
+    mm_checkAll();
 }
