@@ -148,17 +148,6 @@ int mm_init(void)
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
  */
-void *old_mm_malloc(size_t size)
-{
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-	return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
-    }
-}
 void *mm_malloc(size_t size)
 {
     if (DEBUG)
@@ -280,11 +269,9 @@ void *mm_realloc(void *ptr, size_t size)
 {
     void* new_ptr;
     // Freeing the block before copying the data erases the first two data blocks :
-    // We store them in data1 and data2
-    void* data1;
-    void* data2; 
     
-    int i=2;
+    
+    int i=0;
 
     if (ptr==NULL){
         return mm_malloc(size);
@@ -293,16 +280,18 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    size_t new_size= MIN(size,GET_SIZE(ptr));
-    data1=READ(ptr);
-    data2=READ(ptr+WORD_SIZE);
-    mm_free(ptr);
+    // if (size<GET_SIZE(ptr)){
+    //     place(ptr,size);
+    // }
+    if (DEBUG)
+        printf("Old size : %ld, New size : %ld\n", GET_SIZE(ptr), size);
     new_ptr=mm_malloc(size);
-    WRITE(new_ptr, data1);
-    WRITE(new_ptr+WORD_SIZE, data2);
-    for (i=2;i<new_size/WORD_SIZE;i++){
-        WRITE(new_ptr+i*WORD_SIZE, READ(ptr+i*WORD_SIZE));
+    size_t new_size= MIN(size,GET_SIZE(ptr));
+    for (i=0;i<new_size;i++){
+        *((unsigned char*) new_ptr+i)= *((unsigned char*)ptr+i);
     }
+    mm_free(ptr);
+    displayHeap(1);
     return new_ptr;
     // void *oldptr = ptr;
     // void *newptr;

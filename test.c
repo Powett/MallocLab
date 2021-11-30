@@ -26,10 +26,12 @@ int main(char argc, char* argv[]){
     mem_reset_brk();
     mm_init();
     //void* ptr=mm_malloc(2);
-    void* ptr2=mm_malloc(1);
-    mm_free(ptr2);
+    int* ptr2=mm_malloc(2*sizeof(int));
+    ptr2[0]=123;
+    ptr2[1]=321;
     //mm_checkAll();
-    //void* ptr3=mm_realloc(ptr2,500);
+    int* ptr3=mm_realloc(ptr2,500*sizeof(int));
+    printf("%d, %d\n", ptr3[0], ptr3[1]);
     //void* ptr3=mm_malloc(4);
     //void* ptr4=mm_malloc(5);
     // mm_free(ptr);
