@@ -269,10 +269,8 @@ void *mm_realloc(void *ptr, size_t size)
 {
     void* new_ptr;
     // Freeing the block before copying the data erases the first two data blocks :
-    
-    
     int i=0;
-
+    size_t old_size=GET_SIZE(ptr);
     if (ptr==NULL){
         return mm_malloc(size);
     }
@@ -280,32 +278,30 @@ void *mm_realloc(void *ptr, size_t size)
         mm_free(ptr);
         return NULL;
     }
-    // if (size<GET_SIZE(ptr)){
-    //     place(ptr,size);
-    // }
+    if (ALIGN(size)<=old_size){
+        printf("Skipping\n");
+        if (old_size-size >= MINBLOCKSIZE){
+            printf("Splitting\n");
+            WRITE(HDR(ptr), PACK(size,1));
+            WRITE(FTR(ptr), PACK(size,1));
+            WRITE(free_list+WORD_SIZE,ptr);
+            WRITE(NEXT_BLOCK(ptr), free_list);
+            WRITE(NEXT_BLOCK(ptr)+WORD_SIZE, (void*) -1);
+            WRITE(HDR(NEXT_BLOCK(ptr)), PACK(old_size-size-2*WORD_SIZE,0));
+            WRITE(FTR(NEXT_BLOCK(ptr)), PACK(old_size-size-2*WORD_SIZE,0));
+        }
+        return ptr;
+    }
+    printf("Not skipping\n");
     if (DEBUG)
-        printf("Old size : %ld, New size : %ld\n", GET_SIZE(ptr), size);
+        printf("Old size : %ld, New size : %ld\n", old_size, size);
     new_ptr=mm_malloc(size);
-    size_t new_size= MIN(size,GET_SIZE(ptr));
+    size_t new_size= MIN(size,old_size);
     for (i=0;i<new_size;i++){
         *((unsigned char*) new_ptr+i)= *((unsigned char*)ptr+i);
     }
     mm_free(ptr);
-    displayHeap(1);
     return new_ptr;
-    // void *oldptr = ptr;
-    // void *newptr;
-    // size_t copySize;
-    
-    // newptr = mm_malloc(size);
-    // if (newptr == NULL)
-    //   return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    // if (size < copySize)
-    //   copySize = size;
-    // memcpy(newptr, oldptr, copySize);
-    // mm_free(oldptr);
-    // return newptr;
 }
 
 
@@ -314,7 +310,7 @@ static void *find_fit(size_t size){
 	void *ptr;
 	if (DEBUG)
         printf("Find Fit Start\n");
-	for (ptr = free_list; ptr!=(void*)-1 && GET_ALLOCATED(ptr)==0; ptr = NEXTFREE(ptr)){
+	for (ptr = free_list; ptr!=(void*)-1; ptr = NEXTFREE(ptr)){
 		if (DEBUG)
             printf("Proposed size : %ld, Wanted size : %ld\n", (size_t) GET_SIZE(ptr),size);
         if (size<=GET_SIZE(ptr)){
